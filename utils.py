@@ -3,11 +3,9 @@ import torch
 # model imports
 import json
 import torch
-from openai import OpenAI
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import clip
-client = OpenAI()
 import numpy as np
 from PIL import Image
 
