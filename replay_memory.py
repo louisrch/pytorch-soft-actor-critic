@@ -16,7 +16,7 @@ class ReplayMemory:
 
     def sample(self, batch_size):
         batch = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = map(np.stack, zip(*batch))
+        state, action, reward, next_state, done = map(np.stack, zip(*batch[0:2]))
         return state, action, reward, next_state, done
 
     def __len__(self):

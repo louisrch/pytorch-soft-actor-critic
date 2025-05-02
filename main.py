@@ -3,10 +3,21 @@ import datetime
 import gym
 import numpy as np
 import itertools
+import openai
+import os
 import torch
 from sac import SAC
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
+from gym import logger as gymlogger
+gymlogger.set_level(40) #error only
+
+from utils import get_image_embedding, get_goal_embedding, get_current_state_embedding
+from IPython.display import HTML
+
+
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
 parser.add_argument('--env-name', default="HalfCheetah-v2",
@@ -36,7 +47,7 @@ parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
                     help='hidden size (default: 256)')
 parser.add_argument('--updates_per_step', type=int, default=1, metavar='N',
                     help='model updates per simulator step (default: 1)')
-parser.add_argument('--start_steps', type=int, default=10000, metavar='N',
+parser.add_argument('--start_steps', type=int, default=1000, metavar='N',
                     help='Steps sampling random actions (default: 10000)')
 parser.add_argument('--target_update_interval', type=int, default=1, metavar='N',
                     help='Value target update per no. of updates per step (default: 1)')
@@ -48,9 +59,9 @@ args = parser.parse_args()
 
 # Environment
 # env = NormalizedActions(gym.make(args.env_name))
-env = gym.make(args.env_name)
-env.seed(args.seed)
-env.action_space.seed(args.seed)
+env = gym.make(args.env_name, render_mode ="rgb_array")
+#env.seed(args.seed)
+#env.action_space.seed(args.seed)
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -73,13 +84,20 @@ for i_episode in itertools.count(1):
     episode_reward = 0
     episode_steps = 0
     done = False
-    state = env.reset()
-
+    state, info = env.reset()
+    state_embedding = get_current_state_embedding(env)
+    goal_embedding = get_goal_embedding(args.env_name, env)
     while not done:
         if args.start_steps > total_numsteps:
             action = env.action_space.sample()  # Sample random action
         else:
-            action = agent.select_action(state)  # Sample action from policy
+            action = agent.select_action(state)
+            if args.policy == "Deterministic":
+                action = np.argmax(action)
+                  # Sample action from policy
+        if args.policy == "Deterministic":
+            # transform into one-hot encoding
+            action = action * np.array([1,0]) + (1-action) * np.array([0,1])
 
         if len(memory) > args.batch_size:
             # Number of updates per step in environment
@@ -93,11 +111,20 @@ for i_episode in itertools.count(1):
                 writer.add_scalar('loss/entropy_loss', ent_loss, updates)
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                 updates += 1
+        #print(env.step(action))
+        step = env.step(np.argmax(action)) # Step
+        # step : (next_state, reward, done, idk, idk)
+        next_state = step[0]
+        done = step[2]
 
-        next_state, reward, done, _ = env.step(action) # Step
+        next_state_embedding = get_current_state_embedding(env)
+        
+        reward = torch.linalg.norm(state_embedding - goal_embedding) - torch.linalg.norm(next_state_embedding - goal_embedding)
+
+
         episode_steps += 1
         total_numsteps += 1
-        episode_reward += reward
+        episode_reward += reward.item()
 
         # Ignore the "done" signal if it comes from hitting the time horizon.
         # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
@@ -106,7 +133,9 @@ for i_episode in itertools.count(1):
         memory.push(state, action, reward, next_state, mask) # Append transition to memory
 
         state = next_state
-
+        state_embedding = next_state_embedding
+    
+    #print(total_numsteps, args.num_steps)
     if total_numsteps > args.num_steps:
         break
 
@@ -117,13 +146,21 @@ for i_episode in itertools.count(1):
         avg_reward = 0.
         episodes = 10
         for _  in range(episodes):
-            state = env.reset()
+            state, info = env.reset()
             episode_reward = 0
             done = False
             while not done:
+                #print(state, action)
                 action = agent.select_action(state, evaluate=True)
 
-                next_state, reward, done, _ = env.step(action)
+                step = env.step(np.argmax(action))
+                next_state = step[0]
+                done = step[2]
+
+                next_state_embedding = get_current_state_embedding(env)
+
+                reward = step[1]
+                
                 episode_reward += reward
 
 

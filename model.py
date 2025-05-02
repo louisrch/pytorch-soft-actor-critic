@@ -48,6 +48,8 @@ class QNetwork(nn.Module):
         self.apply(weights_init_)
 
     def forward(self, state, action):
+        if action.ndim == 1:
+            action = action.reshape(-1, 1)
         xu = torch.cat([state, action], 1)
         
         x1 = F.relu(self.linear1(xu))
@@ -79,9 +81,9 @@ class GaussianPolicy(nn.Module):
             self.action_bias = torch.tensor(0.)
         else:
             self.action_scale = torch.FloatTensor(
-                (action_space.high - action_space.low) / 2.)
+                [action_space.n]) / 2.
             self.action_bias = torch.FloatTensor(
-                (action_space.high + action_space.low) / 2.)
+                [action_space.n]) / 2.
 
     def forward(self, state):
         x = F.relu(self.linear1(state))
@@ -128,9 +130,9 @@ class DeterministicPolicy(nn.Module):
             self.action_bias = 0.
         else:
             self.action_scale = torch.FloatTensor(
-                (action_space.high - action_space.low) / 2.)
+                [action_space.n])/ 2.
             self.action_bias = torch.FloatTensor(
-                (action_space.high + action_space.low) / 2.)
+                [action_space.n]) / 2.
 
     def forward(self, state):
         x = F.relu(self.linear1(state))
