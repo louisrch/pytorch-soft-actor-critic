@@ -1,6 +1,6 @@
 import argparse
 import datetime
-import gym
+import gymnasium as gym
 import numpy as np
 import itertools
 import openai
@@ -9,8 +9,6 @@ import torch
 from sac import SAC
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
-from gym import logger as gymlogger
-gymlogger.set_level(40) #error only
 
 from utils import get_image_embedding, get_goal_embedding, get_current_state_embedding
 from IPython.display import HTML
@@ -79,6 +77,7 @@ memory = ReplayMemory(args.replay_size, args.seed)
 # Training Loop
 total_numsteps = 0
 updates = 0
+EPSILON = 1e-2
 
 for i_episode in itertools.count(1):
     episode_reward = 0
@@ -87,6 +86,8 @@ for i_episode in itertools.count(1):
     state, info = env.reset()
     state_embedding = get_current_state_embedding(env)
     goal_embedding = get_goal_embedding(args.env_name, env)
+    distance_to_goal_state = 1-torch.cosine_similarity(state_embedding, goal_embedding)
+
     while not done:
         if args.start_steps > total_numsteps:
             action = env.action_space.sample()  # Sample random action
@@ -119,12 +120,19 @@ for i_episode in itertools.count(1):
 
         next_state_embedding = get_current_state_embedding(env)
         
-        reward = torch.linalg.norm(state_embedding - goal_embedding) - torch.linalg.norm(next_state_embedding - goal_embedding)
-
-
+        next_distance_to_goal = 1 - torch.cosine_similarity(next_state_embedding, goal_embedding)
+        if next_distance_to_goal < EPSILON:
+            reward = 2
+        else:
+            reward = distance_to_goal_state - next_distance_to_goal
+            reward = reward.item()
+        #reward = torch.linalg.norm(state_embedding - goal_embedding) - torch.linalg.norm(next_state_embedding - goal_embedding)
+        #reward = step[1]
         episode_steps += 1
         total_numsteps += 1
-        episode_reward += reward.item()
+        episode_reward += reward
+        distance_to_goal_state = next_distance_to_goal
+        #print(reward)
 
         # Ignore the "done" signal if it comes from hitting the time horizon.
         # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
