@@ -13,7 +13,7 @@ class SAC(object):
         if type(action_space) is Discrete:
             action_space_shape = action_space.n
         else:
-            action_space_shape = action_space.shape[0]
+            action_space_shape = action_space.n
 
         self.gamma = args.gamma
         self.tau = args.tau
